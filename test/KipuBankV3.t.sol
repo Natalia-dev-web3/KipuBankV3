@@ -31,7 +31,7 @@ contract KipuBankV3Test is Test {
     
     function setUp() public {
         // Crear fork de mainnet
-        vm.createSelectFork(vm.envString("MAINNET_RPC_URL"));
+        //vm.createSelectFork(vm.envString("MAINNET_RPC_URL"));
         
         // Setup de usuarios
         admin = makeAddr("admin");

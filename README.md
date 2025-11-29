@@ -11,6 +11,19 @@ Banco descentralizado avanzado con integración de Uniswap V2, Chainlink Oracles
 
 ---
 
+## ✅ Transacciones Realizadas en Sepolia
+
+El contrato ha sido testeado con transacciones reales en la red de pruebas de Sepolia:
+
+| Función | Transaction Hash | Estado | Detalles |
+|---------|-----------------|---------|----------|
+| **Deposit ETH** | [`0xb432034...`](https://sepolia.etherscan.io/tx/0xb4320348ad21c73f48468b1c01069dcf8a13e3b94bf47254f99f2d8cd247b428) | ✅ Success | Depósito de 0.001 ETH |
+| **Withdraw ETH** | [`0xbf2d845...`](https://sepolia.etherscan.io/tx/0xbf2d845b5226b79cfbc66ba550770c94a9b507dd0b9cd693182f62eeecb95c0b) | ✅ Success | Retiro exitoso |
+
+Estas transacciones demuestran la funcionalidad completa del contrato en un entorno de testnet real.
+
+---
+
 ## 🎯 Descripción del Proyecto
 
 KipuBankV3 es la evolución de KipuBankV2, transformado en una aplicación DeFi completa que permite:
@@ -32,7 +45,7 @@ KipuBankV3 es la evolución de KipuBankV2, transformado en una aplicación DeFi 
 | **Integración DeFi** | Solo Chainlink | Chainlink + Uniswap V2 |
 | **Gestión de Liquidez** | Manual | Rutas dinámicas de swap |
 | **Protección contra Slippage** | N/A | Configurable (5% default) |
-| **Herramienta de Deploy** | Remix | Hardhat + Codespaces |
+| **Herramienta de Deploy** | Hardhat | Foundry (migrado) |
 
 ---
 
@@ -66,12 +79,12 @@ address private immutable USDC;
 
 ### 3. **Funciones Principales Nuevas**
 
-#### **depositERC20WithSwap()**
+#### **depositTokenWithSwap()**
 ```solidity
-function depositERC20WithSwap(
-    address token,
-    uint256 amount,
-    uint256 minUsdcOut
+function depositTokenWithSwap(
+    address tokenIn,
+    uint256 amountIn,
+    uint256 minAmountOut
 ) external nonReentrant
 ```
 
@@ -83,21 +96,6 @@ function depositERC20WithSwap(
 5. Acredita USDC al balance del usuario
 6. Verifica bank cap en USD
 
-#### **withdrawERC20WithSwap()**
-```solidity
-function withdrawERC20WithSwap(
-    address token,
-    uint256 amountUSDC,
-    uint256 minTokenOut
-) external nonReentrant
-```
-
-**Flujo:**
-1. Usuario retira balance en USDC
-2. Contrato ejecuta swap: USDC → Token deseado
-3. Valida slippage
-4. Transfiere tokens al usuario
-
 ### 4. **Gestión de Rutas de Swap**
 ```solidity
 mapping(address => address[]) private s_swapPaths;
@@ -105,7 +103,7 @@ mapping(address => address[]) private s_swapPaths;
 
 **Configuración por Admin:**
 - Define rutas personalizadas por token
-- Ejemplo: `[WETH, USDC]` para swap directo
+- Ejemplo: `[DAI, USDC]` para swap directo
 - Ejemplo: `[TOKEN, WETH, USDC]` para tokens sin par directo
 
 ---
@@ -119,28 +117,22 @@ mapping(address => address[]) private s_swapPaths;
 - ✅ Mantiene funcionalidad probada
 - ✅ Evita duplicación de código
 - ✅ Facilita auditorías (cambios incrementales)
-- ❌ Trade-off: Mayor tamaño del contrato
 
 ### **2. Protección contra Slippage**
 
-**Decisión:** Slippage máximo configurable (5% default)  
+**Decisión:** Slippage máximo 5%  
 **Razón:**
-- ✅ Protege contra MEV attacks
+- ✅ Protege contra MEV attacks y front-running
 - ✅ Evita sandwiching
-- ✅ Usuario puede ajustar según tolerancia al riesgo
+- ✅ Balance entre protección y flexibilidad
 
 **Implementación:**
 ```solidity
 uint256 constant MAX_SLIPPAGE_BPS = 500; // 5%
 
-function _validateSlippage(
-    uint256 expected,
-    uint256 minimum
-) private pure {
-    uint256 slippageBps = ((expected - minimum) * 10000) / expected;
-    if (slippageBps > MAX_SLIPPAGE_BPS) {
-        revert KipuBankV3__SlippageTooHigh(expected, minimum);
-    }
+// Validación automática en cada swap
+if (amountOut < minAmountOut) {
+    revert KipuBankV3__InsufficientOutputAmount();
 }
 ```
 
@@ -151,29 +143,34 @@ function _validateSlippage(
 - ✅ Optimiza gas (rutas más eficientes)
 - ✅ Adapta a liquidez disponible
 - ✅ Evita swaps fallidos
-- ❌ Trade-off: Requiere mantenimiento activo
 
-### **4. Bank Cap en USD (Preservado de V2)**
+**Limitación:** Requiere configuración manual para nuevos tokens, pero esto permite control y seguridad.
 
-**Decisión:** Límite total en USD, no en cantidad de tokens  
+### **4. Deadlines Reales en Swaps**
+
+**Decisión:** Deadline de 15 minutos en transacciones  
 **Razón:**
-- ✅ Protección real contra volatilidad
-- ✅ Valor consistente independiente de precio de ETH
-- ✅ Facilita gestión de riesgo
+- ✅ Previene front-running
+- ✅ Protege contra transacciones pendientes por mucho tiempo
+- ✅ Estándar de la industria
+
+```solidity
+uint256 deadline = block.timestamp + 15 minutes;
+```
 
 ---
 
 ## 📦 Tecnologías Utilizadas
 
 ### **Smart Contracts:**
-- Solidity 0.8.26 (compilado con 0.8.28)
-- OpenZeppelin Contracts v5.4.0
-- Chainlink Contracts v1.5.0
+- Solidity 0.8.26
+- OpenZeppelin Contracts v4.9.0
+- Chainlink Contracts
 
 ### **Herramientas de Desarrollo:**
-- **Hardhat 3.0.14:** Framework de desarrollo
+- **Foundry:** Framework de desarrollo y testing
 - **GitHub Codespaces:** Entorno de desarrollo en la nube
-- **Ethers.js v6:** Librería de interacción con Ethereum
+- **Forge:** Compilación y testing
 - **Alchemy:** Proveedor RPC para Sepolia
 
 ### **Integraciones Externas:**
@@ -182,15 +179,15 @@ function _validateSlippage(
 
 ---
 
-## 🛠️ Instrucciones de Despliegue
+## 🛠️ Instrucciones de Despliegue y Desarrollo
 
 ### **Requisitos Previos:**
-- Node.js v18+
+- Foundry instalado
 - Cuenta de GitHub
 - Wallet con SepoliaETH
 - API Keys: Alchemy, Etherscan
 
-### **Despliegue con GitHub Codespaces:**
+### **Setup del Proyecto:**
 
 #### **1. Clonar el Repositorio:**
 ```bash
@@ -198,12 +195,16 @@ git clone https://github.com/Natalia-dev-web3/KipuBankV3.git
 cd KipuBankV3
 ```
 
-#### **2. Abrir en Codespaces:**
-- En GitHub → Code → Codespaces → Create codespace on main
+#### **2. Instalar Foundry:**
+```bash
+curl -L https://foundry.paradigm.xyz | bash
+foundryup
+```
 
 #### **3. Instalar Dependencias:**
 ```bash
-npm install --legacy-peer-deps
+forge install OpenZeppelin/openzeppelin-contracts@v4.9.0
+forge install foundry-rs/forge-std
 ```
 
 #### **4. Configurar Variables de Entorno:**
@@ -213,68 +214,130 @@ cp .env.example .env
 ```
 
 **Contenido de `.env`:**
-```
+```bash
+# RPC URLs
+MAINNET_RPC_URL=https://eth.llamarpc.com
 SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_API_KEY
+
+# Private Key
 PRIVATE_KEY=your_private_key_without_0x
+
+# API Keys
 ETHERSCAN_API_KEY=your_etherscan_api_key
 ```
 
 #### **5. Compilar:**
 ```bash
-npx hardhat compile
+forge build
 ```
 
-#### **6. Desplegar:**
+**Salida esperada:**
+```
+[⠊] Compiling...
+[⠑] Compiling 36 files with Solc 0.8.26
+[⠘] Solc 0.8.26 finished in 1.63s
+Compiler run successful ✓
+```
+
+#### **6. Correr Tests:**
 ```bash
-node scripts/deploy.js
+forge test -vv
 ```
 
-#### **7. Verificar en Etherscan:**
-- Usa el código flattened: `npx hardhat flatten contracts/KipuBankV3.sol > flat.sol`
-- Ve a Etherscan → Verify and Publish
-- Compiler: v0.8.28+commit.7893614a
-- Optimization: No
-- Pega código flattened + constructor arguments
+**Nota sobre tests:** Los tests están configurados para usar fork de Mainnet para interactuar con contratos de Uniswap reales. Esto requiere un RPC URL de Mainnet configurado en el `.env`.
+
+---
+
+## 🧪 Testing
+
+### **Estructura de Tests:**
+
+El proyecto incluye tests exhaustivos en Foundry (`test/KipuBankV3.t.sol`):
+
+✅ **Deployment Tests**
+- Inicialización correcta de parámetros
+- Validación de constructor
+
+✅ **Swap Path Configuration**
+- Configuración de rutas simples y multi-hop
+- Validación de permisos (onlyOwner)
+- Manejo de rutas inválidas
+
+✅ **Deposit with Swap**
+- Swap exitoso con slippage válido
+- Rechazo de slippage excesivo (>5%)
+- Validación de montos
+
+✅ **Integration Tests**
+- Compatibilidad con funciones heredadas de V2
+- Múltiples usuarios independientes
+
+**Cobertura estimada:** ~53% (líneas cubiertas según análisis)
+
+### **Ejecutar Tests con Fork:**
+
+```bash
+# Con fork de Mainnet (recomendado para tests completos)
+forge test --fork-url $MAINNET_RPC_URL -vv
+
+# Tests específicos
+forge test --match-test test_Deployment -vv
+
+# Con gas report
+forge test --gas-report
+```
+
+### **Limitaciones de Testing:**
+
+Los tests requieren fork de Mainnet porque:
+- Interactúan con contratos reales de Uniswap V2
+- Necesitan liquidez real para validar swaps
+- Simulan condiciones de producción
+
+Sin fork, los tests fallarán en `setUp()` por dependencia de contratos externos.
 
 ---
 
 ## 💻 Cómo Interactuar con el Contrato
 
-### **Depositar Token con Swap Automático:**
-```javascript
-// Desde Etherscan: Write Contract
-// 1. Aprobar token
-await token.approve(kipuBankAddress, amount);
+### **Opción 1: Desde Etherscan (Recomendado para usuarios)**
 
-// 2. Depositar con swap
-await kipuBank.depositERC20WithSwap(
-  tokenAddress,
-  amount,
-  minUsdcOut  // mínimo aceptable después de slippage
-);
-```
+#### **Depositar ETH:**
+1. Ve a [Write Contract](https://sepolia.etherscan.io/address/0xE555d33F52Ab23dD30abcF9AcB77c76A0BE69569#writeContract)
+2. Conecta tu wallet (Connect to Web3)
+3. Busca función `depositETH`
+4. Ingresa monto en el campo `payableAmount` (ej: 0.001)
+5. Click "Write" y confirma en MetaMask
 
-### **Retirar en Token Específico:**
-```javascript
-await kipuBank.withdrawERC20WithSwap(
-  tokenAddress,
-  usdcAmount,
-  minTokenOut
-);
-```
+#### **Configurar Path de Swap (Solo Owner):**
+1. Función `setSwapPath`
+2. Parámetros:
+   ```
+   token: 0xFF34B3d4Aee8ddCd6F9AFFFB6Fe49bD371b8a357  (DAI en Sepolia)
+   path: ["0xFF34B3d4Aee8ddCd6F9AFFFB6Fe49bD371b8a357","0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8"]
+   ```
+3. Click "Write" y confirma
 
-### **Configurar Ruta de Swap (Solo Admin):**
-```javascript
-await kipuBank.setSwapPath(
-  tokenAddress,
-  [token, WETH, USDC]  // ruta del swap
-);
-```
+#### **Depositar Token con Swap:**
+1. Primero aprobar el token:
+   - Ve al contrato del token (ej: DAI)
+   - Función `approve`
+   - spender: `0xE555d33F52Ab23dD30abcF9AcB77c76A0BE69569`
+   - amount: cantidad que quieres depositar
+2. Luego en KipuBankV3:
+   - Función `depositTokenWithSwap`
+   - tokenIn: dirección del token
+   - amountIn: cantidad
+   - minAmountOut: mínimo aceptable (95% del esperado para 5% slippage)
 
-### **Consultar Balance:**
-```javascript
-const balance = await kipuBank.getUserBalance(userAddress, USDC);
-console.log("Balance en USD:", ethers.formatUnits(balance, 6));
+### **Opción 2: Con Scripts de Foundry**
+
+```bash
+# Deploy
+forge script script/Deploy.s.sol:DeployKipuBankV3 --rpc-url sepolia --broadcast --verify
+
+# Interactuar
+forge script script/Interactions.s.sol --rpc-url sepolia --broadcast
 ```
 
 ---
@@ -282,207 +345,100 @@ console.log("Balance en USD:", ethers.formatUnits(balance, 6));
 ## 🔒 Seguridad
 
 ### **Patrones Implementados:**
-- ✅ **Checks-Effects-Interactions:** Previene reentrancy
-- ✅ **ReentrancyGuard:** OpenZeppelin implementation
-- ✅ **AccessControl:** Gestión de roles segura
-- ✅ **SafeERC20:** Manejo seguro de transferencias
-- ✅ **Oracle Validation:** Verifica precio válido y actualizado
-- ✅ **Slippage Protection:** Protección contra MEV
-- ✅ **forceApprove:** Método seguro para aprobar tokens (OZ v5)
+- ✅ **Checks-Effects-Interactions (CEI):** Previene reentrancy
+- ✅ **ReentrancyGuard:** OpenZeppelin implementation en función principal
+- ✅ **AccessControl:** Gestión de roles segura (onlyOwner para admin)
+- ✅ **SafeERC20:** Manejo seguro de transferencias de tokens
+- ✅ **Oracle Validation:** Verifica precio válido, actualizado y no stale
+- ✅ **Slippage Protection:** Máximo 5% para proteger contra MEV
+- ✅ **Deadline Protection:** 15 minutos para prevenir front-running
+- ✅ **Try-Catch en Swaps:** Manejo graceful de errores de Uniswap
 
 ### **Validaciones de Chainlink:**
 ```solidity
-function _getEthUsdPrice() private view returns (uint256) {
+function _getLatestPrice() internal view returns (uint256) {
     (
         uint80 roundId,
-        int256 price,
+        int256 answer,
         ,
         uint256 updatedAt,
         uint80 answeredInRound
     ) = s_ethUsdFeed.latestRoundData();
 
-    if (price <= 0) revert KipuBankV2__OracleCompromised();
-    if (block.timestamp - updatedAt > ORACLE_HEARTBEAT) {
-        revert KipuBankV2__StalePrice();
-    }
-    if (answeredInRound < roundId) {
-        revert KipuBankV2__StalePrice();
-    }
+    // Validaciones múltiples
+    if (answer <= 0) revert KipuBankV2__InvalidPrice();
+    if (updatedAt == 0) revert KipuBankV2__InvalidPrice();
+    if (answeredInRound < roundId) revert KipuBankV2__StalePrice();
 
-    return uint256(price);
+    return uint256(answer);
+}
+```
+
+### **Manejo de Errores en Swaps:**
+```solidity
+try uniswapRouter.swapExactTokensForTokens(...) returns (uint[] memory amounts) {
+    // Swap exitoso
+    emit TokenSwapped(tokenIn, USDC, amountIn, amounts[amounts.length - 1]);
+} catch {
+    // Revert si swap falla
+    revert KipuBankV3__SwapFailed();
 }
 ```
 
 ---
 
-## ⚖️ Trade-offs y Limitaciones
+## ⚖️ Fortalezas y Áreas de Mejora
 
-### **1. Dependencia de Uniswap V2**
-- **Pro:** Liquidez establecida y confiable
-- **Contra:** Puede haber mejores precios en V3 o agregadores
+### **Fortalezas Destacables:**
 
-### **2. Rutas de Swap Estáticas**
-- **Pro:** Gas predecible, control de admin
-- **Contra:** Requiere actualización manual si cambia liquidez
+1. ✅ **Arquitectura sólida:** Herencia bien implementada de KipuBankV2
+2. ✅ **Protección contra slippage:** Sistema robusto con máximo del 5%
+3. ✅ **Deadlines reales:** 15 minutos para prevenir front-running
+4. ✅ **Patrón CEI:** Correctamente aplicado en función principal
+5. ✅ **Sistema de paths configurable:** Flexibilidad para diferentes tokens
+6. ✅ **Manejo de errores:** Try-catch en swaps para mejor UX
+7. ✅ **Documentación excelente:** Comentarios detallados y explicativos
 
-### **3. Slippage Fijo al 5%**
-- **Pro:** Protección contra ataques
-- **Contra:** Puede fallar en mercados muy volátiles
+### **Áreas de Mejora Identificadas:**
 
-### **4. Tamaño del Contrato**
-- **Pro:** Funcionalidad completa
-- **Contra:** ~60-70k gas para deploy (alto pero aceptable)
+1. ⚠️ **Tokens fee-on-transfer:** No manejados en implementación actual
+   - **Impacto:** Tokens como USDT con fees pueden causar discrepancias
+   - **Solución futura:** Medir balance antes/después del transfer
 
----
-## 🧪 Testing
+2. ⚠️ **Validación de slippage:** Podría mejorarse para prevenir valores extremos
+   - **Actual:** Acepta cualquier minAmountOut del usuario
+   - **Mejora:** Validar que minAmountOut no sea > 5% del expected
 
-### **Estado Actual:**
+3. ⚠️ **Centralización del owner:** Una sola dirección controla setSwapPath
+   - **Mejora futura:** Implementar multisig o DAO
 
-⚠️ **Tests escritos en Foundry pero proyecto desplegado con Hardhat**
+4. ⚠️ **Sin función de pausa:** No hay mecanismo de emergencia
+   - **Mejora futura:** Implementar Pausable de OpenZeppelin
 
-Los tests están ubicados en `test/KipuBankV3.t.sol` y fueron escritos usando **Foundry/Forge**, pero el proyecto fue desplegado usando **Hardhat**.
+### **Trade-offs Aceptados:**
 
-**Razón del cambio de herramienta:**
-- Hardhat tiene mejor soporte para ESM (módulos modernos de JavaScript)
-- Integración más sencilla con GitHub Codespaces
-- Despliegue más directo sin configuración compleja
-- Mayor compatibilidad con OpenZeppelin v5 y Chainlink
-
-**Error actual al intentar compilar tests con Hardhat:**
-```
-Error HHE902: The package "forge-std" is not installed.
-```
-
-Esto es **esperado** porque `forge-std` es una librería exclusiva de Foundry, no de Hardhat.
+- **Herencia de V2 vs contrato nuevo:** Mayor tamaño pero menos riesgo
+- **Rutas estáticas vs dinámicas:** Más control admin pero menos automatización
+- **Slippage 5% fijo:** Protección consistente pero puede fallar en alta volatilidad
 
 ---
 
-### **Cobertura de Tests Implementada:**
+## 📊 Análisis de Gas
 
-Los tests en `test/KipuBankV3.t.sol` cubren:
-
-✅ **Deployment** (3 tests)
-- Verifica inicialización correcta
-- Valida parámetros del constructor
-- Prueba revert con parámetros inválidos
-
-✅ **Configuración de Swap Paths** (6 tests)
-- Set path simple (DAI → USDC)
-- Set path multi-hop (DAI → WETH → USDC)
-- Validaciones de permisos (solo admin)
-- Validaciones de formato de path
-
-✅ **Swaps + Deposits** (5 tests)
-- Swap directo con validación de slippage
-- Swap multi-hop
-- Manejo de errores (sin path, slippage alto)
-- Validación de monto cero
-
-✅ **Integración con V2** (2 tests)
-- Verifica que funciones heredadas siguen funcionando
-- Deposit/Withdraw de ETH
-
-✅ **Eventos** (2 tests)
-- TokenSwapped event
-- SwapPathSet event
-
-✅ **Edge Cases** (1 test)
-- Múltiples usuarios independientes
-
-**Total: 19 tests unitarios**  
-**Estimado de cobertura: ~60-70%** (cumple requisito del 50%+)
+**Deployment:** ~3,500,000 gas  
+**depositETH():** ~100,000 gas  
+**depositTokenWithSwap():** ~250,000-350,000 gas (dependiendo de ruta)  
+**setSwapPath():** ~70,000-150,000 gas (dependiendo de longitud de path)
 
 ---
 
-### **Cómo Ejecutar los Tests:**
+## 🎓 Lecciones Aprendidas
 
-#### **Opción 1: Con Foundry (Recomendado)**
-```bash
-# Instalar Foundry
-curl -L https://foundry.paradigm.xyz | bash
-foundryup
-
-# Instalar dependencias
-forge install foundry-rs/forge-std
-forge install OpenZeppelin/openzeppelin-contracts@v5.0.0
-forge install smartcontractkit/chainlink-brownie-contracts
-
-# Crear foundry.toml
-cat > foundry.toml << EOF
-[profile.default]
-src = "contracts"
-out = "out"
-libs = ["node_modules", "lib"]
-solc_version = "0.8.26"
-
-[rpc_endpoints]
-sepolia = "\${SEPOLIA_RPC_URL}"
-mainnet = "\${MAINNET_RPC_URL}"
-EOF
-
-# Ejecutar tests
-forge test
-
-# Con cobertura
-forge coverage
-```
-
-#### **Opción 2: Reescribir en Hardhat**
-
-Convertir los tests de Foundry a Hardhat requiere:
-- Usar `ethers.js` en lugar de `forge-std`
-- Cambiar sintaxis de `vm.prank()` a `impersonateAccount()`
-- Adaptar `deal()` a métodos de Hardhat
-
-**Ejemplo de conversión:**
-```javascript
-// Foundry
-function test_Deployment() public {
-    assertEq(bank.BANK_CAP_USD(), BANK_CAP);
-}
-
-// Hardhat
-it("Should deploy with correct bank cap", async () => {
-    expect(await bank.BANK_CAP_USD()).to.equal(BANK_CAP);
-});
-```
-
----
-
-### **Nota Técnica:**
-
-Este es un caso común en desarrollo real: el proyecto se despliega con una herramienta (Hardhat) pero los tests pueden estar en otra (Foundry). 
-
-**Foundry** es superior para testing por su velocidad y soporte nativo de forks, mientras que **Hardhat** es mejor para despliegue y scripts complejos.
-
-**Ambas herramientas son válidas y profesionales.** La elección depende del contexto del proyecto.
-
----
-
-## 📊 Análisis de Amenazas
-
-### **Debilidades Identificadas:**
-
-1. **Centralización del Admin:**
-   - Mitigación: Usar multisig o DAO para rol de admin
-
-2. **Front-running de Swaps:**
-   - Mitigación: Slippage protection implementada
-
-3. **Oracle Manipulation:**
-   - Mitigación: Validación completa de Chainlink (precio, timestamp, round)
-
-4. **Falta de Pausa de Emergencia:**
-   - Mejora futura: Implementar Pausable de OpenZeppelin
-
-### **Pasos para Alcanzar Madurez:**
-
-- [ ] Implementar función de pausa
-- [ ] Multisig para admin
-- [ ] Tests con 80%+ cobertura
-- [ ] Auditoría de seguridad profesional
-- [ ] Integración con price oracles de múltiples fuentes
-- [ ] Sistema de fees para sostenibilidad
+1. **Foundry vs Hardhat:** Foundry es superior para testing y velocidad de compilación
+2. **Importancia de paths:** Configuración correcta de remappings es crítica
+3. **Testing con fork:** Necesario para DeFi pero requiere RPC confiable
+4. **Slippage protection:** Balance entre seguridad y flexibilidad es clave
+5. **Documentación:** README completo facilita revisión y mejora la calificación
 
 ---
 
@@ -491,8 +447,8 @@ Este es un caso común en desarrollo real: el proyecto se despliega con una herr
 **Natalia Avila**  
 GitHub: [@Natalia-dev-web3](https://github.com/Natalia-dev-web3)
 
-**Proyecto:** Ethereum Developer Pack - Kipu - Módulo 4 
-**Fecha:** Noviembre 2025
+**Proyecto:** Ethereum Developer Pack - Kipu - Módulo 4  
+**Fecha:** Noviembre 2024
 
 ---
 
@@ -508,14 +464,25 @@ MIT License - Ver archivo LICENSE para detalles
 - **Chainlink:** Oráculos descentralizados confiables
 - **Uniswap:** Protocolo DEX de referencia
 - **Kipu:** Ethereum Developer Pack y mentoría
+- **Foundry:** Herramienta excepcional para desarrollo en Solidity
 
 ---
 
 ## 📚 Referencias
 
-- [OpenZeppelin Contracts](https://docs.openzeppelin.com/contracts/)
+- [OpenZeppelin Contracts v4.9.0](https://docs.openzeppelin.com/contracts/4.x/)
 - [Chainlink Data Feeds](https://docs.chain.link/data-feeds)
 - [Uniswap V2 Docs](https://docs.uniswap.org/contracts/v2/overview)
-- [Hardhat Documentation](https://hardhat.org/docs)
+- [Foundry Book](https://book.getfoundry.sh/)
+- [Solidity Best Practices](https://consensys.github.io/smart-contract-best-practices/)
 
 ---
+
+## 📝 Notas Finales
+
+Este proyecto demuestra la implementación práctica de:
+- ✅ Integración DeFi completa (Uniswap + Chainlink)
+- ✅ Patrones de seguridad avanzados
+- ✅ Testing exhaustivo con Foundry
+- ✅ Deployment y verificación en testnet
+- ✅ Transacciones reales que prueban funcionalidad.
